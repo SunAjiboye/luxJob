@@ -1,0 +1,368 @@
+---
+title: "luxJob"
+author: "Sun Ajiboye"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r}
+# Establish your database connection
+connect_db <- function() {
+  con <- DBI::dbConnect(
+    RPostgres::Postgres(),
+    dbname = Sys.getenv("PG_DB"),
+    host = Sys.getenv("PG_HOST"),
+    user = Sys.getenv("PG_USER"),
+    password = Sys.getenv("PG_PASSWORD"),
+    port = 5432
+  )
+  return(con)
+}
+
+```
+
+
+```{r}
+get_skills <- function(limit = 100) {
+  query <- paste0("SELECT skill_id, skill_label FROM adem.skills LIMIT ", limit)
+  result <- dbGetQuery(connection, query)
+  return(result)
+print(result)
+}
+
+```
+
+
+
+
+```{r}
+# Load the glue package
+library(glue)
+
+# Function to fetch companies
+get_companies <- function(limit = 100) {
+  # Build the query using glue
+  query <- glue("SELECT company_id, name, sector FROM adem.companies LIMIT {limit}")
+  
+  # Execute the query using a database connection
+   result <- dbGetQuery(connection, query)  
+  
+  # Return the result as a data frame
+  return(result)
+}
+
+
+```
+
+
+```{r}
+get_skill_by_id <- function(skill_id) {
+  tryCatch({
+    query <- paste0("SELECT skill_id, skill_label FROM adem.skills WHERE skill_id = '", skill_id, "'")
+    result <- dbGetQuery(connection, query)
+    return(result)
+  }, error = function(e) {
+    message("Error while fetching skill: ", e)
+    return(NULL)
+  })
+}
+
+```
+
+
+```{r}
+get_companies <- function(limit = 100) {
+  tryCatch({
+    query <- paste0("SELECT company_id, name, sector FROM adem.companies LIMIT ", limit)
+    result <- dbGetQuery(connection, query)
+    return(result)
+  }, error = function(e) {
+    message("Error while fetching companies: ", e)
+    return(NULL)
+  })
+}
+
+```
+
+
+
+```{r}
+get_companies_id <- function(limit = 100) {
+  tryCatch({
+    query <- paste0("SELECT company_id, name, sector FROM adem.companies LIMIT ", limit)
+    result <- dbGetQuery(connection, query)
+    return(result)
+  }, error = function(e) {
+    message("Error while fetching companies: ", e)
+    return(NULL)
+  })
+}
+```
+
+
+
+```{r}
+library(glue)
+
+# Function to fetch vacancies with filtering options
+get_vacancies <- function(skill = NULL, company = NULL, canton = NULL, limit = 100) {
+  # Build the base query
+  query <- "SELECT vacancy_id, company_id, occupation, canton, year, month FROM adem.vacancies WHERE 1=1"
+  
+  # Add filters dynamically based on provided parameters
+  if (!is.null(skill)) {
+    query <- glue("{query} AND skill = '{skill}'")
+  }
+  if (!is.null(company)) {
+    query <- glue("{query} AND company_id = {company}")
+  }
+  if (!is.null(canton)) {
+    query <- glue("{query} AND canton = '{canton}'")
+  }
+  
+  # Add the limit clause
+  query <- glue("{query} LIMIT {limit}")
+  
+  
+  # Return the result as a data frame
+  return(result)
+}
+
+
+
+```
+
+
+
+```{r}
+get_vacancy_by_id <- function(vacancy_id) {
+  # Validate input: Ensure vacancy_id is numeric and 6 digits
+  if (!is.numeric(vacancy_id) || nchar(as.character(vacancy_id)) != 6) {
+    stop("The vacancy_id must be a 6-digit numeric value.")
+  }
+  
+  tryCatch({
+    # Query for vacancy details
+    vacancy_query <- glue("SELECT vacancy_id, company_id, occupation, canton, year, month 
+                           FROM adem.vacancies 
+                           WHERE vacancy_id = {vacancy_id}")
+    vacancy_info <- dbGetQuery(connection, vacancy_query)
+    
+    # Check if no data was retrieved
+    if (is.null(vacancy_info) || nrow(vacancy_info) == 0) {
+      message("No vacancy found for ID: ", vacancy_id)
+      return(NULL)
+    }
+    
+    # Query for required skills
+    skills_query <- glue("SELECT skill_id, skill_label 
+                          FROM adem.skills 
+                          WHERE skill_id IN (
+                            SELECT skill_id 
+                            FROM adem.vacancy_skills 
+                            WHERE vacancy_id = {vacancy_id}
+                          )")
+    skills_info <- dbGetQuery(connection, skills_query)
+    
+    # Handle cases with no skills
+    if (is.null(skills_info) || nrow(skills_info) == 0) {
+      skills_info <- data.frame()  # Return an empty data frame
+    }
+    
+    # Return the result as a named list
+    return(list(
+      vacancy = vacancy_info,
+      skills = skills_info
+    ))
+  }, error = function(e) {
+    message("Error while fetching vacancy details: ", e$message)
+    return(NULL)
+  })
+}
+
+```
+
+
+```{r}
+
+# Function to fetch learning tracks
+get_learning_tracks <- function(skill_id = NULL) {
+  tryCatch({
+    # Base SQL query
+    query <- "SELECT track_id, title, description, url FROM adem.learning_tracks"
+    
+    # Add a WHERE clause if skill_id is provided
+    if (!is.null(skill_id)) {
+      query <- glue("{query} WHERE skill_id = '{skill_id}'")
+    }
+    
+    # Execute the query
+    result <- dbGetQuery(connection, query)  # Ensure 'connection' is properly initialized
+    
+    # Return the result as a data frame
+    return(result)
+  }, error = function(e) {
+    message("Error while fetching learning tracks: ", e$message)
+    return(NULL)
+  })
+}
+
+
+```
+
+
+```{r}
+# Function to fetch a learning track and its linked skills
+get_learning_track_by_id <- function(track_id) {
+  # Validate input: Ensure track_id is numeric
+  if (!is.numeric(track_id)) {
+    stop("The track_id must be a numeric value.")
+  }
+  
+  tryCatch({
+    # Query to fetch the learning track details
+    track_query <- glue("SELECT track_id, title, description, url 
+                         FROM adem.learning_tracks 
+                         WHERE track_id = {track_id}")
+    track_info <- dbGetQuery(connection, track_query)
+    
+    # Check if the track exists
+    if (is.null(track_info) || nrow(track_info) == 0) {
+      message("No learning track found for ID: ", track_id)
+      return(NULL)
+    }
+    
+    # Query to fetch associated skills
+    skills_query <- glue("SELECT skill_id, skill_label 
+                          FROM adem.skills 
+                          WHERE skill_id IN (
+                            SELECT skill_id 
+                            FROM adem.track_skills 
+                            WHERE track_id = {track_id}
+                          )")
+    
+    # Execute the query
+    result <- dbGetQuery(connection, query) 
+    
+    # Handle cases where no skills are found
+    if (is.null(skills_info) || nrow(skills_info) == 0) {
+      skills_info <- data.frame()  # Return an empty data frame
+    }
+    
+    # Return the track details and linked skills as a named list
+    return(list(
+      track = track_info,
+      skills = skills_info
+    ))
+  }, error = function(e) {
+    message("Error while fetching the learning track: ", e$message)
+    return(NULL)
+  })
+}
+
+
+
+```
+
+
+
+```{r}
+## Fetch Recommended Books Dynamically
+library(DBI)
+library(glue)
+
+# Function to fetch recommended books
+get_books <- function(skill = NULL) {
+  tryCatch({
+    # Base SQL query to fetch all books
+    query <- "SELECT book_id, title, author, skill_id FROM adem.books"
+    
+    # Add a WHERE clause if a skill is provided
+    if (!is.null(skill)) {
+      query <- glue("{query} WHERE skill_id = '{skill}'")
+    }
+    
+    # Execute the query using a valid database connection
+    result <- dbGetQuery(connection, query)  # Ensure 'connection' is properly initialized
+    
+    # Return the results as a data frame
+    return(result)
+  }, error = function(e) {
+    message("Error while fetching books: ", e$message)
+    return(NULL)
+  })
+}
+
+```
+
+
+```{r}
+# Function to fetch details of a book by its book_id
+get_book_by_id <- function(book_id) {
+  # Validate input: Ensure book_id is numeric
+  if (!is.numeric(book_id)) {
+    stop("The book_id must be a numeric value.")
+  }
+  
+  tryCatch({
+    # Query to fetch details of the specified book
+    book_query <- glue("SELECT book_id, title, author, skill_id 
+                        FROM adem.books 
+                        WHERE book_id = {book_id}")
+    book_info <- dbGetQuery(connection, book_query)
+    
+    # Check if the book exists
+    if (is.null(book_info) || nrow(book_info) == 0) {
+      message("No book found for ID: ", book_id)
+      return(NULL)
+    }
+    
+    # Return the book details as a data frame
+    return(book_info)
+  }, error = function(e) {
+    message("Error while fetching book details: ", e$message)
+    return(NULL)
+  })
+}
+
+# Example Usage
+# Fetch details for 
+book_details <- get_book_by_id
+
+```
+
+
+```{r}
+library(DBI)
+library(glue)
+
+# Function to log search queries
+log_search <- function(user_id, query) {
+  # Validate input
+  if (!is.numeric(user_id)) {
+    stop("The user_id must be a numeric value.")
+  }
+  if (!is.character(query)) {
+    stop("The query must be a character value.")
+  }
+  
+  tryCatch({
+    # Construct SQL INSERT query
+    log_query <- glue("INSERT INTO adem.search_logs (user_id, query, timestamp) 
+                       VALUES ({user_id}, '{query}', NOW())")
+    
+    # Execute the query
+    dbExecute(connection, log_query)  
+    
+    # Return TRUE on success
+    return(TRUE)
+  }, error = function(e) {
+    message("Error while logging the search query: ", e$message)
+    return(FALSE)
+  })
+}
+
+```
+
+
+
